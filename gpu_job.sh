@@ -1,8 +1,8 @@
 #!/bin/bash
 #PBS -N fp_job
 #PBS -l select=1:ncpus=1:ngpus=1:mem=16gb:scratch_local=8gb
-#PBS -l walltime=0:30:00 
-#PBS -q cucam
+#PBS -l walltime=0:20:00 
+#PBS -q gpu
 
 # define a DATADIR variable: directory where the input files are taken from and where output will be copied to
 DATADIR=/auto/brno2/home/nierja/classification/Tox # substitute username and path to to your real username and path
