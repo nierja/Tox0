@@ -38,7 +38,7 @@ def main(args: argparse.Namespace) -> list:
     df.replace([np.inf, -np.inf], np.nan, inplace=True, ); df.dropna(inplace=True)
     data, target = df.iloc[:, 0:-2].to_numpy(), df.iloc[:, -1].to_numpy()
 
-    # perfoms the PCA transformation to R^2 space
+    # perfoms the PCA transformation to R^{args.pca} space
     if args.pca:
         transformer = IncrementalPCA(n_components=args.pca)
         data = sparse.csr_matrix(data)
