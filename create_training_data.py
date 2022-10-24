@@ -10,7 +10,7 @@ from rdkit.Chem import AllChem, MACCSkeys, Descriptors, rdMolDescriptors
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--target", default="NR-AR", type=str, help="Target toxocity type")
-parser.add_argument("--fp", default="rdkit_descr", type=str, help="fingerprint type")
+parser.add_argument("--fp", default="ecfp4_maccs", type=str, help="fingerprint type")
 
 MAX_NUM_OF_ATOMS = 132  # maximal number of atoms in a molecule from Tox21 dataset after removing hydrogens
 MATRIX_SIZE = MAX_NUM_OF_ATOMS ** 2
@@ -106,6 +106,16 @@ def main(args):
                 if args.fp == 'rdk6': fp = Chem.RDKFingerprint(mol, maxPath=6, fpSize=nBits, nBitsPerHash=2)
                 if args.fp == 'rdk7': fp = Chem.RDKFingerprint(mol, maxPath=7, fpSize=nBits, nBitsPerHash=2)
 
+                if args.fp == 'ecfp4_maccs': 
+                    fp1 = AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=nBits)
+                    fp2 = MACCSkeys.GenMACCSKeys(mol)
+                if args.fp == 'maccs_rdk7': 
+                    fp1 = AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=nBits)
+                    fp2 = MACCSkeys.GenMACCSKeys(mol)
+                if args.fp == 'ecfp4_rdk7': 
+                    fp1 = AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=nBits)
+                    fp2 = MACCSkeys.GenMACCSKeys(mol)
+
                 # adjacency & distance matrix based fingerprints
                 if args.fp == 'dist_2D': fp = pad(Chem.rdmolops.GetDistanceMatrix(mol), mol.GetNumAtoms(), sort=0)
                 if args.fp == 'dist_3D': fp = pad(Chem.rdmolops.Get3DDistanceMatrix(mol), mol.GetNumAtoms(), sort=0)
@@ -148,8 +158,14 @@ def main(args):
 
 
                 # appending fp and target_value to the output file
-                for value in np.nditer(fp):
-                    file.write("{:.6f}, ".format(value))
+                if args.fp == 'ecfp4_maccs':
+                    for value in np.nditer(fp1):
+                        file.write("{:.6f}, ".format(value))
+                    for value in np.nditer(fp2):
+                        file.write("{:.6f}, ".format(value))
+                else:
+                    for value in np.nditer(fp):
+                        file.write("{:.6f}, ".format(value))
                 file.write(f"{target_value}\n")
                 line_count += 1
             print(f'Processed {line_count} lines.')
