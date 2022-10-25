@@ -8,7 +8,7 @@ path = './Talos_results'
 all_files = glob.glob(os.path.join(path , "*.csv"))
 
 li = []; targets = []
-# load all CSVs and merge them into on
+# load all CSVs and merge them into one
 for filename in all_files:
     tg = filename.split('_')[-1][:-4]
     df = pd.read_csv(filename, index_col=None, header=0, delimiter=';')
@@ -51,7 +51,7 @@ for key in best_AUCs.keys():
 
         ax.axhline(0, color='grey', linewidth=0.8)
         ax.set_ylabel('10-fold crossvalidated ROC_AUC')
-        ax.set_title('ROC_AUCs for ecfp4')
+        ax.set_title(f'ROC_AUCs for {key}')
         ax.set_xticks(ind)
         ax.set_xticklabels(tg, rotation=45)
         ax.set_yticks(np.arange(0, 1.1, step=0.1))
