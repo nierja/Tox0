@@ -58,3 +58,7 @@ for key in best_AUCs.keys():
         ax.bar_label(p1, auc_label, label_type='edge')
         plt.xlim([-0.7,N-0.3])
         plt.savefig(f'./figs/talos_{key}.png', dpi=600, bbox_inches="tight")
+        # print(f"NR_avg={np.mean(auc[:7])}")
+        # print(f"SR_avg={np.mean(auc[7:])}")
+
+print(frame.fp.unique())
