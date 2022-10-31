@@ -1,5 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import argparse
+from hashlib import new
 import numpy as np
 import pandas as pd
 from scipy import sparse
@@ -25,7 +26,6 @@ from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.neighbors import NeighborhoodComponentsAnalysis
 from sklearn.random_projection import SparseRandomProjection
 
-
 import os
 # trick to import CUDA, following lines might need to be deleted/modified depending on your CUDA instalation
 # os.add_dll_directory("C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.6/bin")
@@ -35,7 +35,6 @@ from tensorboard.plugins.hparams import api as hp
 # assert(tf.test.is_gpu_available())
 gpus = tf.config.list_physical_devices('GPU'); logical_gpus = tf.config.list_logical_devices('GPU')
 print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs available")
-
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--seed", default=42, type=int, help="Random seed")
@@ -47,7 +46,7 @@ parser.add_argument("--pca", default=False, type=bool, help="Plot the PCAs")
 parser.add_argument("--pca_comps", default=20, type=int, help="dimensionality of space the dataset is reduced to using pca")
 parser.add_argument("--grid_search", default=False, type=bool, help="Perform hyperparameter optimisation, not supported for tf_cnn model")
 parser.add_argument("--target", default="NR-AR", type=str, help="Target toxocity type")
-parser.add_argument("--model", default="tf_dnn", type=str, help="Model to use")
+parser.add_argument("--model", default="tf_cnn", type=str, help="Model to use")
 parser.add_argument("--scaler", default="MaxAbsScaler", type=str, help="defines scaler to preprocess data")
 parser.add_argument("--test_size", default=0.25, type=lambda x:int(x) if x.isdigit() else float(x), help="Test set size")
 
@@ -58,8 +57,8 @@ def main(args: argparse.Namespace) -> list:
     negative_PCA_features, negative_vis_features = [], []
     results, y_true, y_predicted_proba, fprs, tprs = [], [], [], [], []
 
-    fpdict_keys = ['maccs', 'ecfp0','ecfp2', 'ecfp4', 'fcfp2', 'fcfp4']
-    # fpdict_keys = ['ecfp4']
+    # fpdict_keys = ['rdkit_descr', 'ecfp0','ecfp2', 'ecfp4', 'fcfp2', 'fcfp4']
+    fpdict_keys = ['ecfp4']
     # fpdict_keys = ['dist_2D' ,'dist_3D', 'adjac', 'inv_dist_2D', 'inv_dist_3D', 'Laplacian']
     # fpdict_keys = [ 'rdkit_descr', 'ecfp0','ecfp2', 'ecfp4', 'fcfp2', 'fcfp4', 'CMat_full', 'CMat_400', 'dist_2D' ,
     #               'dist_3D', 'adjac', 'Laplacian', ]
@@ -74,8 +73,8 @@ def main(args: argparse.Namespace) -> list:
         df = pd.read_csv(f"Tox21_data/{args.target}/{args.target}_{fp_name}.data")
         df.replace([np.inf, -np.inf], np.nan, inplace=True, ); df.dropna(inplace=True)
         data, target = df.iloc[:, 0:-2].to_numpy(), df.iloc[:, -1].to_numpy()
-        # imputer = SimpleImputer(missing_values=np.nan,strategy = "mean")
-        # data = imputer.fit_transform(data)
+        imputer = SimpleImputer(missing_values=np.nan,strategy = "mean")
+        data = imputer.fit_transform(data)
 
         # perfoms the PCA transformation to R^2 space
         if args.pca:
@@ -100,7 +99,7 @@ def main(args: argparse.Namespace) -> list:
             train_data = scaler.fit_transform(train_data)
             test_data = scaler.transform(test_data)
             model = tf.keras.models.Sequential([
-                tf.keras.layers.Dense(data.shape[1], input_shape=(data.shape[1],), activation='relu'),
+                tf.keras.layers.Dense(data.shape[1], input_shape=(data.shape[1],1,1), activation='relu'),
                 tf.keras.layers.Dense(data.shape[1]//2, activation=tf.nn.relu),
                 tf.keras.layers.Dropout(0.1),
                 tf.keras.layers.Dense(data.shape[1]//2, activation=tf.nn.relu),
@@ -108,39 +107,25 @@ def main(args: argparse.Namespace) -> list:
                 tf.keras.layers.Dense(1, activation='sigmoid'),
             ])
             model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'],)
-        elif args.model == "tf_rnn":
-            VOCAB_SIZE = 100
-            encoder = tf.keras.layers.TextVectorization(
-                max_tokens=VOCAB_SIZE,
-                split="character",
-            )
-            encoder.adapt(train_data.map(lambda text, label: text))
-
-            model = tf.keras.Sequential([
-                encoder,
-                tf.keras.layers.Embedding(
-                    input_dim=len(encoder.get_vocabulary()),
-                    output_dim=64,
-                    # Use masking to handle the variable sequence lengths
-                    mask_zero=True),
-                tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(64)),
-                tf.keras.layers.Dense(64, activation='relu'),
-                tf.keras.layers.Dense(1)
+        elif args.model == "tf_cnn":
+            scaler = sklearn.preprocessing.StandardScaler()
+            train_data.reshape(train_data.shape[0],train_data.shape[1],1)
+            train_data = scaler.fit_transform(train_data)
+            test_data = scaler.transform(test_data)
+            model = tf.keras.models.Sequential([
+                tf.keras.layers.Conv1D(8, 3, input_shape=(train_data.shape[1],1), activation='relu'),
+                tf.keras.layers.MaxPooling1D(),
+                tf.keras.layers.Conv1D(16, 3, activation='relu'),
+                tf.keras.layers.MaxPooling1D(),
+                tf.keras.layers.Conv1D(32, 3, activation='relu'),
+                tf.keras.layers.MaxPooling1D(),
+                tf.keras.layers.Flatten(),
+                tf.keras.layers.Dense(data.shape[1]//2, activation=tf.nn.relu),
+                tf.keras.layers.Dropout(0.5),
+                tf.keras.layers.Dense(1, activation='sigmoid'),
             ])
 
-
-            model.compile(loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
-                          optimizer=tf.keras.optimizers.Adam(1e-4),
-                          metrics=['accuracy'])
-            
-            """## Train the model"""
-            
-            history = model.fit(train_data, epochs=10,
-                                validation_data=test_data,
-                                validation_steps=30)
-
-            test_loss, test_acc = model.evaluate(test_data)
-            print(test_loss, test_acc)
+            model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'],)
         else:
             if args.model == "lr":
                 model = [
@@ -200,9 +185,9 @@ def main(args: argparse.Namespace) -> list:
             print(f"\nBest hyperparameters:\n{grid_search.best_params_}\n")
             test_predictions = grid_search.best_estimator_.predict(test_data)
             test_proba = grid_search.best_estimator_.predict_proba(test_data)
-        elif args.model == "tf_dnn":
+        elif args.model == "tf_dnn" or args.model == "tf_cnn":
             # tensorflow SNN model needs to be trained differently than sklearn models
-            model.fit(train_data, train_target, epochs=5, batch_size=4)
+            model.fit(train_data, train_target, epochs=5, batch_size=128)
             predictions = model.predict(test_data)
             test_predictions = (predictions > 0.5).astype("int32")
             _ = np.ones((predictions.shape))
@@ -241,6 +226,26 @@ def main(args: argparse.Namespace) -> list:
         y_true.append(test_target); y_predicted_proba.append(test_proba)
         fprs.append(fpr["micro"]); tprs.append(tpr["micro"])
 
+        # Get data for plotting
+        # finished = 0
+        # fpr_list= list(fpr["micro"])
+        # tpr_list= list(tpr["micro"])
+        # while not finished:
+        #     finished = 1
+        #     for i in range(len(fpr_list)-1):
+        #         if fpr_list[i] == fpr_list[i+1]:
+        #             fpr_list.pop(i)
+        #             tpr_list.pop(i)
+        #             finished = 0
+        #             break
+
+        # temp=[]
+        # for coord in zip(fpr_list, tpr_list):
+        #     print(coord)
+        #     temp.append(coord)
+
+        # print(len(fpr_list), len(tpr_list))
+
         # perfoms selected projection of training data to R^2 space
         if args.vis != None:
             # load the training data anew, since they were distorted with PCA
@@ -272,3 +277,5 @@ if __name__ == "__main__":
         table = tabulate(results, headers=["fp_name", "acc", "balanced_acc", "roc"], floatfmt=(None, '.4f', '.2f',))
         output_file.write(f"\n{args.model} - {args.target} \nTest size = {args.test_size}\n" + table)
     print(table)
+
+
